@@ -1,0 +1,160 @@
+=head1 Unix/Linux Command Line Basics for Bioinformatics 
+
+=head2 The basic structure of a Unix/Linux command:
+
+ command --option-name -x file1 file2
+ |       |             |  |     | 
+ |       |             |  |     another parameter 
+ |       |             |  parameter
+ |       |             Short option name
+ |       Long Option name... most options have both long and short name
+ First word is a command name
+
+=head2 Getting help:
+
+A manual page can be navigated with arrow keys, PageUp/PageDown. Press 'q' to quit.
+
+ man <cmd> display manual of command
+ man wc    display manual of 'wc' command
+ man ls    display manual of 'ls' command
+ 
+=head2 Orienting yourself where are you and what are you doing here?
+
+ pwd         Present Working Directory, print the directory you are in.12
+ ls          List contents of current directory
+ ls -l       List contents of current directory with extra information
+ ls -l dir/  List contents of directory called dir/
+ ls -l -h    Like above, with more friendly file size
+ ls -lh      Like above, but with the flags combined
+ ls -a       List contents of current directory, including hidden dirs
+ tree        display tree of files/directories from current directory
+
+=head2 Navigating around the file system
+
+ cd        Change to home directory
+ cd ..     Change to parent directory
+ cd <dir>  Change directory to dir
+ cd $HOME  $HOME is a shorthand for your home directory
+ cd ~      ~ is also a shorthand for your home directory
+
+ cp <file1> <file2>   Copy file1 to file2. Overwrites file2 if it pre-exists.
+ mv <file1> <file2>   Move file1 to file2. Overwrites file2 if it pre-exists.
+                      Use this command to rename files.
+
+ mkdir <dir>          Make a directory called dir.
+
+=head2 Removing files
+
+Warning: these commands will not ask or confirm that you want to remove
+something, it'll just do it.  Double/triple check before running.
+
+ rm <file>     remove a file
+ rm -r <dir>   remove a directory
+
+=head2 Viewing files
+
+ cat <file>    print an entire file 
+ less <file>   open a "pager" to interactive view file.
+               arrow keys, PageUp/PageDown to navigate, 'q' to quit.
+
+=head2 Compression/Decompression
+
+ tar xvzf <file.tar.gz>    Extract .tar.gz file which is a common file  
+                           type for software bundles.
+ tar xvzf <file.tgz>       Same as above. .tgz is synonymous for .tar.gz
+ tar xvjf <file.tar.bz2>   Extract .tar.bz2 file which is also a common  
+                           file type for software bundles.
+ gzip <file>               Compress file, create a file called file.gz
+ gunzip <file.gz>          De-compress file.gz, create a file called file
+ gunzip -c <file.gz>       Print compressed file, useful for piping
+ zcat <file.gz>            Same as above
+ unzip <file.zip>          unzip .zip
+
+ find -type f   List all files in current directory and all subdirectories
+ 
+ find -type f -iname '*.gff'   List all files in current directory and all
+                               subdirectories matching the pattern "*.gff"
+
+
+=head2 Chopping, slicing, dicing, filtering files
+
+ cat *.fastq > <file>     Concatenate all *.fastq files into file
+ head <file>              Display first 10 lines of file
+ head -n 100 <file>       Display first 100 lines of file
+ tail <file>              Display last 10 lines of file
+ tail -n 100 <file>       Display last 100 lines of file
+ cut -f1                  Print the first column of a tab-separated-values file
+ cut -f5 -d,              Print the fith column of a comma-separated-values file
+ grep <pattern> <file>    Print lines in file matching pattern
+ grep AT1G01010 <file>    Print all lines in file containing AT1G01010
+ grep '^Chr1' <file>      Print all lines in file beginning with Chr1
+ grep -i '^Chr1' <file>   Print all lines in file beginning with Chr1 (case insensitive)
+
+=head2 Other useful commands
+
+ history        Display history of commands run
+ which <cmd>    Display full path of command, useful for troubleshooting
+ wc -l <file>   Count and display number of lines in file
+ du -h          Calculate size of directory.
+ df -h          Display file system usage information
+ top            Display system resource usage
+ htop           Display system resource usage... prettier than regular 'top'
+ passwd         Change your password
+
+=head2 Sorting a file's contents
+
+ sort -o <output_file> <input_file>      Sort lines alphabetically
+ sort -k1,1 -o <output> <input>          Sort lines by first column, alphabetically
+ sort -k1,1 -k4,4n -o <output> <input>   Sort lines by first column, alphabetically, then by the 4th, numerically
+ sort -u -o <output> <input>             Sort and remove duplicates
+
+=head2 More advanced commands
+
+ ssh -l <username> <remotehost>   Log in to remote host using username
+ sudo <cmd>                       Run cmd as root (administrator)
+ apt-cache search <package>       Search for package in repository
+ sudo apt-get install <package>   Install package (found by above command)
+
+=head2 Editting Files
+
+There are hundreds of text editors for Linux/Unix. I suggest the graphical editor "gedit".
+
+=head2 Using wildcards
+
+Often, you will have similarly named files, such as file1.fastq, file2.fastq,
+etc.  You can refer to all of them simultaneously as file*.fastq. For example,
+to count total number of lines in all those files, do:
+ 
+ wc -l file*.fastq
+
+Which is equivalent to:
+
+ wc -l file1.fastq file2.fastq file3.fastq file4.fastq ... 
+
+=head2 How to redirect to/from files, combine commands via piping 
+
+Write output of I<cmd> to I<output_file>:
+
+I<cmd> > I<output_file>	
+
+Append output of I<cmd> to I<output_file>:
+
+Example:
+
+ grep '^Chr1' tair10-genes.gff > tair10-genes-chr1.gff   Extract chr1 genes
+ sort -k1,1 -k4,4n file.gff > file-sorted.gff            Sort gff by seq/start coord
+
+I<cmd> >> I<output_file>	
+
+Read command input from I<input_file>
+
+I<cmd> < I<input_file>	
+Take output of 
+
+I<cmd1> | I<cmd2>
+
+Example:
+
+ grep '^Chr1' tair10-genes.gff | wc -l   Count Chr1 genes in file
+ 
+=cut
