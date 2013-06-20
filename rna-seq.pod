@@ -1,0 +1,362 @@
+=head1 RNA-Seq Notes
+
+This file introduces some tools for RNA-seq analysis. It was written as notes
+for an audience with little Unix/Linux experience.  I use Arabidopsis Thaliana
+(TAIR10 release) as the example genome throughout.
+
+=head2 OVERVIEW
+
+The basic steps of RNA-seq analysis presented in this file are:
+
+ RNA-Seq data -> tophat -> cuffdiff -> your favorite statistics tool
+
+=head2 PREPARATIONS
+
+=head3 Installing software
+
+Ubuntu 13.04, Linux Mint 15 (which are the two distros I recommend/support), 
+both have all the tools needed for these notes prepackaged in a single command:
+
+ sudo apt-get install cufflinks tophat bowtie bowtie2 samtools openjdk-7-jre
+
+=head3 Concatenating sequence 
+
+Recent sequencers (like the Illumina Hi-Seq 2000) create reads in multiple
+compressed files, presumably to ease downloading.  After downloading all files
+to the same directory, you can de-compress and concatenate the files with
+something like:
+
+ zcat *.fastq.gz > myreads.fastq
+
+=head3 Get the TAIR10 reference genome + annotations
+
+arabidopsis.org -> Download -> Sequences -> whole_chromosomes
+
+ ftp://ftp.arabidopsis.org/home/tair/Sequences/whole_chromosomes/
+
+Concatenate individual chromosomes into a single files:
+
+ cat TAIR10_chr*.fas > TAIR10.fa
+
+arabidopsis.org -> Download -> Genes -> TAIR10_genome_release -> TAIR10_gff3
+
+ ftp://ftp.arabidopsis.org/home/tair/Genes/TAIR10_genome_release/TAIR10_gff3/TAIR10_GFF3_genes.gff
+ ftp://ftp.arabidopsis.org/home/tair/Genes/TAIR10_genome_release/TAIR10_gff3/TAIR10_GFF3_genes_transposons.gff
+
+=head3 Bowtie/Bowtie2 indices
+
+You must first create an index file in order to run bowtie/bowtie2.  You need
+separate indices for each. It can take on the order of ~10 minutes for
+arabidopsis, or much much longer for larger genomes. (Though once you build it
+once, you can reuse it for all runs of bowtie). Some indices are available
+prebuilt on the bowtie homepages.
+
+ bowtie-build TAIR10.fa TAIR10
+
+will create TAIR10.1.ebwt, TAIR10.2.ebwt, TAIR10.3.ebwt, TAIR10.4.ebwt,
+TAIR10.rev.1.ebwt, and TAIR10.rev.2.ebwt
+
+ bowtie2-build TAIR10.fa TAIR10
+
+will create TAIR10.1.bt2, TAIR10.2.bt2, TAIR10.3.bt2, TAIR10.4.bt2,
+TAIR10.rev.1.bt2, and TAIR10.rev.2.bt2
+
+The first parameter is the name of the reference genome, the second is the
+I<prefix> of the indices, since there is no simple notation for refering to
+multiple files.  Whenever a program requires an index, you will refer to the
+prefix.
+
+=head2 THE TOOLS
+
+=head3 A note on unix notation:
+
+Unix-people, including the authors of tools covered in this pages, often use
+these shorthands when specifying command options and syntax:
+
+ {Curly braces}  usually specifies a choice
+ { A | B | C }   So this means A, B, or C are acceptable here
+ 
+ [Square braces] usually means optional
+ 
+ <Angle braces>  often mean required
+ 
+ stars*          usually means many, or any. called a 'wildcard'
+
+=head3 Bowtie
+
+"Bowtie is an ultrafast, memory-efficient short read aligner geared toward
+quickly aligning large sets of short DNA sequences (reads) to large genomes."
+
+L<http://bowtie-bio.sourceforge.net/manual.shtml>
+
+ bowtie [options] <index> {-1 <m1> -2 <m2> | <s>} [<hit>]
+ 
+Single-end alignment with default options:
+
+ bowtie -S ~/genomes/TAIR10 reads.fastq alignment.sam
+
+Paired-end alignment with default options:
+
+ bowtie -S ~/genomes/TAIR10 -1 left.fastq -2 right.fastq alignment.sam
+
+Single-end alignment with default options:
+
+ bowtie -S ~/genomes/TAIR10 reads.fastq alignment.sam
+
+bowtie (but not bowtie2) has two distinct modes of alignment: the "fixed # of
+mismatches" mode specified by the -v option, and the "quality aware" mode
+specified by the -n mode.  In -v mode, only reads with less than C<-v>
+mismatches are kept.  Allowable values for C<-v> are 0, 1, 2, or 3. This 
+aligns, only keeping reads with no mismatches at all.
+
+ bowtie -v 0 -S ~/genomes/TAIR10 reads.fastq alignment.sam
+
+In -n mode (which is the default so you don't actually have to specify it), the
+upstream end of the reads (called the seed) are aligned (configured as C<-l>
+bases) are aligned first with up to C<-n> mismatches, and then is extended
+downstream until the quality of the read crosses a certain threshold.  This is
+useful b/c the upstream bases are usually much higher quality than downstream
+bases.  This aligns with a seed of length 10 allowed up to 2 mismatches.
+
+ bowtie -l 10 -n 2 -S ~/genomes/TAIR10 reads.fastq alignment.sam
+
+Both are useful but unless you have a good reason,
+stick with the quality-aware mode (-n). 
+
+See web page for many more examples.
+
+=head2 Bowtie2
+
+"Bowtie 2 is an ultrafast and memory-efficient tool for aligning sequencing
+reads to long reference sequences. It is particularly good at aligning reads of
+about 50 up to 100s or 1,000s of characters to relatively long (e.g. mammalian)
+genomes."
+
+L<http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml>
+
+=head4 Differences vs bowtie 1
+
+=over 1
+
+=item 1. supports gapped alignments
+
+=item 2. supports local-local alignments
+
+=item 3. is faster (for longer >50bp reads)
+
+=item 4. but does not handle colorspace alignments
+
+=back
+
+ bowtie2 [options] -x <index> {-1 <m1> -2 <m2> | -U <r>} -S <sam>
+
+Unpaired alignment:
+
+ bowtie2 [options] -x <index> -U <r> -S <sam>
+
+ bowtie2 -3 50 --fast -p 4 -x ~/genomes/TAIR10 reads.fastq -S alignment.sam
+
+Paired alignment:
+
+ bowtie2 [options] -x <bt2-idx> -1 <m1> -2 <m2> -S <sam>
+
+ bowtie2 -3 50 --fast -p 4 -x ~/genomes/TAIR10 -1 left-reads.fastq -2 right-reads.fastq -S alignment.sam
+
+end-to-end presets:
+
+ --very-fast
+ --fast
+ --sensitive
+ --very-sensitive
+
+local-to-local presets:
+
+ --very-fast-local
+ --fast-local
+ --sensitive-local
+ --very-sensitive-local
+
+other options:
+
+ -5 <x> Remove x bp from 5' end of reads
+ -3 <x> Remove x bp from 3' end of reads
+ -p <n> Use n threads
+
+(See manual page for many, many more options).
+
+Sample output:
+ 
+ 17100069 reads; of these:
+   17100069 (100.00%) were paired; of these:
+     11798925 (69.00%) aligned concordantly 0 times
+     3776036 (22.08%) aligned concordantly exactly 1 time
+     1525108 (8.92%) aligned concordantly >1 times
+     ----
+     11798925 pairs aligned concordantly 0 times; of these:
+       253039 (2.14%) aligned discordantly 1 time
+     ----
+     11545886 pairs aligned 0 times concordantly or discordantly; of these:
+       23091772 mates make up the pairs; of these:
+         22134009 (95.85%) aligned 0 times
+         679081 (2.94%) aligned exactly 1 time
+         278682 (1.21%) aligned >1 times
+ 35.28% overall alignment rate
+
+
+=head3 Tophat
+
+"TopHat is a program that aligns RNA-Seq reads to a genome in order to identify
+exon-exon splice junctions. It is built on the ultrafast short read mapping
+program Bowtie. TopHat runs on Linux and OS X."
+
+L<http://tophat.cbcb.umd.edu/manual.shtml>
+
+Basically, tophat is an aligner that can both detect and align across
+junctions.  You can feed it a list of known junctions to help it. It uses
+bowtie2 (or bowtie1) internally.  
+
+ tophat [options]* <index_base> <reads1_1[,...,readsN_1]> [reads1_2,...readsN_2] 
+
+Single end with default options:
+
+ tophat -o tophat_alignment ~/genomes/TAIR10.fas reads.fastq 
+
+Paired end with default options:
+
+ tophat -o tophat_alignment ~/genomes/TAIR10.fas left-reads.fastq right-reads.fastq
+
+Single end with max intron length of 5000, which is appropriate for
+arabidopsis. (Default, which targets mammalian genomes, is 300000):
+
+ tophat -o tophat_alignment -I 5000 ~/genomes/TAIR10.fas reads.fastq
+
+Single end with max intron length of 5000 and a list of known junction sites:
+
+ tophat -o tophat_alignment -I 5000 -G $HOME/annotations/TAIR10_GFF3_genes.gff ~/genomes/TAIR10.fas left-reads.fastq right-reads.fastq
+
+Tophat outputs a directory, not a single file.  In the examples above, they would be named
+"tophat_alignment".
+
+=over 1
+
+=item accepted_hits.bam - aligned reads in BAM format.
+
+=item junctions.bed - list of junctions in BED format
+
+=item insertions.bed, deletions.bed - insertions and deletions in BED format
+
+=back
+
+=cut
+
+=head3 Cufflinks
+
+"Cufflinks assembles transcripts, estimates their abundances, and tests for
+differential expression and regulation in RNA-Seq samples. It accepts aligned
+RNA-Seq reads and assembles the alignments into a parsimonious set of
+transcripts. Cufflinks then estimates the relative abundances of these
+transcripts based on how many reads support each one, taking into account
+biases in library preparation protocols. "
+
+L<http://cufflinks.cbcb.umd.edu/manual.html>
+
+Cufflinks takes the output of tophat and does at least two cool things:
+
+First, cufflinks can create a new exon/splicing annotation file for you by looking at the 
+output of tophat.  This is very cool considering that you could have ran tophat without a known 
+annotation file. The following command:
+
+ cufflinks -o cufflinks_output tophat_output_dir/accepted_hits.bam 
+
+will create a GTF file called cufflinks_output_dir/transcripts.gtf.  It's output format is 
+available here: L<http://cufflinks.cbcb.umd.edu/manual.html#gtfout>
+
+Second, the cuffdiff program (included in cufflinks) can calculate differential expression:
+
+ cuffdiff -o cuffdiff_output ~/annotations/TAIR10_GFF3.gff tophat1/accepted_hits.bam tophat2/accepted_hits.bam 
+
+The above command produces many files detailed here: L<http://cufflinks.cbcb.umd.edu/manual.html#cuffdiff>
+The most interesting are the differential expression files:
+
+ isoform_exp.diff    Transcript differential FPKM.
+ gene_exp.diff       Gene differential FPKM. Tests difference sin the summed FPKM of transcripts sharing each gene_id
+ tss_group_exp.diff  Primary transcript differential FPKM. Tests differences in the summed FPKM of transcripts sharing each tss_id
+ cds_exp.diff        Coding sequence differential FPKM. Tests differences in the summed FPKM of transcripts sharing each p_id independent of tss_id
+
+Finally, you can combine the two above and run cuffdiff against the de-novo transcript.
+
+=head3 Visualizing with IGV
+
+L<http://www.broadinstitute.org/software/igv/download>
+
+Load a genome:
+
+ Genomes -> Load Genome From File -> Select "TAIR10.fa"
+
+Then an annotation:
+
+ File -> Load from File -> "TAIR10_GFF3_genes.gff"
+
+Then alignment files:
+
+ File -> Load from File -> "your_alignment_file.bam"
+
+=head2 FILE FORMATS
+
+Bioinformatics people love inventing formats for no reason whatsoever. See
+L<https://genome.ucsc.edu/FAQ/FAQformat.html> for a small collection. SAM, BAM, and
+GFF/GTF/GFF3 are the most used formats, at least by us, so I go over them below: 
+
+=head3 SAM files
+
+Sequence/Alignment map format is the most common format for storing alignment
+data.  It is the default output format for bowtie2/tophat/cufflinks. bowtie
+(version 1) needs to -S options.  L<http://samtools.sourceforge.net/SAM1.pdf>
+
+BAM files, binary Sam, contains the same information as sam but is stored more
+efficiently for computer programs.  It is not edittable/viewable via text tools.
+
+=head4 Converting sam to bam
+
+ samtools view -bS alignment.sam > alignment.unsorted.sam
+ samtools sort alignment.unsorted.sam alignment.bam 
+ samtools index alignment.bam
+
+or use C<sam2bam.pl>:
+ 
+ sam2bam.pl alignment.sam
+
+=head4 Converting bam to sam
+
+ samtools view -h -o alignment.bam alignment.sam 
+
+=head3 GFF/GTF/GFF3 files
+
+This is a 9-column format which is used to annotate "stuff on a genome." 
+
+=over 1
+
+=item 1. Sequence id ("chr1", "chr2", etc).
+
+=item 2. Source      ("TAIR10", "TAIR8", etc).*
+
+=item 3. Feature     ("gene", "exon", "transposable_element", etc).*
+
+=item 4. Start coordtinate
+
+=item 5. End coordtinate
+
+=item 6. Score       (not relevant for annotation... for bs-seq data, this is often the methylation score).
+
+=item 7. Strand      (+ or -)
+
+=item 8. Frame       (0, 1, 2)
+
+=item 9. Attributes  (contains additional information)
+
+=back
+
+* Can be a dot (".") for no source.
+ 
+=cut
+
